@@ -7,10 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    # Credenciales dummy para el provider AWS (requeridas por el SDK)
     env:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
@@ -18,18 +14,18 @@ jobs:
 
     services:
       localstack:
-        image: localstack/localstack:3.0-lite
+        image: localstack/localstack:2.3
         ports:
           - 4566:4566
         env:
           SERVICES: s3
-          DEBUG: 1
+          DEBUG: 0
           DEFAULT_REGION: us-east-1
         options: >-
           --health-cmd="curl -f http://localhost:4566/health || exit 1"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=15
+          --health-retries=20
 
     steps:
       - name: Checkout repository
@@ -40,15 +36,15 @@ jobs:
         with:
           terraform_version: 1.9.8
 
-      - name: Wait for LocalStack (healthcheck)
+      - name: Wait for LocalStack
         run: |
-          echo "Waiting for LocalStack service..."
-          for i in {1..30}; do
+          for i in {1..40}; do
             if curl -s http://localhost:4566/health | grep -q '"initialized": true'; then
               echo "✅ LocalStack ready"; exit 0; fi
-            sleep 5
+            echo "Waiting... ($i)"; sleep 3
           done
           echo "❌ LocalStack not ready in time" && exit 1
+
       - name: Terraform init
         working-directory: infra
         run: terraform init -backend=false
@@ -60,10 +56,3 @@ jobs:
       - name: Terraform apply
         working-directory: infra
         run: terraform apply -input=false -auto-approve tfplan
-
-      # Paso opcional de verificación: listar buckets en LocalStack
-      - name: Verify with AWS CLI (optional)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y awscli
-          aws --endpoint-url=http://localhost:4566 s3 ls
