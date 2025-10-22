@@ -1,4 +1,4 @@
-name: Terraform Deploy (Simulado)
+name: Terraform Deploy (LocalStack Real)
 
 on:
   push:
@@ -6,32 +6,38 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: us-east-1
-
+    runs-on: self-hosted  # ← Tu propio runner con Docker
+    
+    services:
+      localstack:
+        image: localstack/localstack:2.3
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3,ec2,lambda
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
-
-      - name: Terraform init
+      
+      - name: Wait for LocalStack
+        run: |
+          timeout 60 bash -c 'until curl -s http://localhost:4566/_localstack/health; do sleep 2; done'
+      
+      - name: Terraform workflow
         working-directory: infra
-        run: terraform init -backend=false
+        env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          terraform init
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
-      - name: Terraform plan
-        working-directory: infra
-        run: terraform plan -input=false -out=tfplan
-
-      - name: Terraform apply (simulado)
-        working-directory: infra
-        run: terraform apply -input=false -auto-approve tfplan
-
-      - name: Confirm result
-        run: echo "✅ Despliegue simulado completado con éxito (LocalStack no ejecutado en runner)."
+      - name: Verify deployment
+        run: |
+          aws --endpoint-url=http://localhost:4566 s3 ls
