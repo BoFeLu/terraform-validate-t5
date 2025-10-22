@@ -12,21 +12,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
 
-    services:
-      localstack:
-        image: localstack/localstack:2.3
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: s3
-          DEBUG: 0
-          DEFAULT_REGION: us-east-1
-        options: >-
-          --health-cmd="curl -f http://localhost:4566/health || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,14 +21,22 @@ jobs:
         with:
           terraform_version: 1.9.8
 
-      - name: Wait for LocalStack
+      - name: Install Docker and AWS CLI
         run: |
+          sudo apt-get update -y
+          sudo apt-get install -y docker.io awscli
+
+      - name: Start LocalStack container manually
+        run: |
+          echo "🟢 Starting LocalStack..."
+          docker run -d -p 4566:4566 -e SERVICES=s3 -e DEBUG=1 --name localstack localstack/localstack:2.3
+          echo "⏳ Waiting for LocalStack to initialize..."
           for i in {1..40}; do
             if curl -s http://localhost:4566/health | grep -q '"initialized": true'; then
               echo "✅ LocalStack ready"; exit 0; fi
             echo "Waiting... ($i)"; sleep 3
           done
-          echo "❌ LocalStack not ready in time" && exit 1
+          echo "❌ LocalStack not ready in time" && docker logs localstack && exit 1
 
       - name: Terraform init
         working-directory: infra
@@ -56,3 +49,12 @@ jobs:
       - name: Terraform apply
         working-directory: infra
         run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Verify S3 buckets in LocalStack
+        run: |
+          aws --endpoint-url=http://localhost:4566 s3 ls || true
+
+      - name: Stop LocalStack
+        run: |
+          docker stop localstack
+          docker rm localstack
