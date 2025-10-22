@@ -11,3 +11,5 @@ otra cosa
 probando algo nuevo
 más cosillas aquí
 última prueba para limpiar luego
+
+# Actualización menor: documentación y flujo CI/CD mejorado
