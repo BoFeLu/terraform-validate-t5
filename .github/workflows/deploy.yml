@@ -66,7 +66,6 @@ jobs:
       - name: Verify S3 bucket creation
         run: |
           echo "📦 Listando buckets en LocalStack..."
-          sudo apt-get update -qq
-          sudo apt-get install -y awscli
+          pip install awscli --break-system-packages
           aws --endpoint-url=http://localhost:4566 s3 ls
           echo "✅ Bucket creado correctamente"
